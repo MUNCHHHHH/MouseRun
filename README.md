@@ -6,8 +6,8 @@ MouseRun은 블루투스 마우스 연결 상태에 따라 macOS의 자연스러
 - GitHub: [@MUNCHHHHH](https://github.com/MUNCHHHHH)
 - macOS 13 이상
 - Apple Silicon/Intel Universal 앱
-- 블루투스 마우스 연결됨: 자연스러운 스크롤 꺼짐, 메뉴 막대 마우스가 달립니다.
-- 블루투스 마우스 없음: 자연스러운 스크롤 켜짐, 메뉴 막대 마우스가 멈춥니다.
+- 블루투스 마우스 연결됨: 자연스러운 스크롤 꺼짐, 햄스터(Mouse)가 달립니다.
+- 블루투스 마우스 없음: 자연스러운 스크롤 켜짐, 햄스터(Mouse)가 멈춥니다.
 - 앱 종료: 자연스러운 스크롤 켜짐.
 - 로그인 실행은 LaunchAgent로 자동 설치됩니다.
 - 상단바에서는 RunCat 오른쪽에 MouseRun을 위치시키는 것을 권장합니다.

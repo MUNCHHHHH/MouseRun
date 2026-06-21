@@ -137,6 +137,7 @@ Download \`$RELEASE_BASENAME-macOS-universal.dmg\`, open it, then drag \`$APP_NA
 
 - macOS $MIN_MACOS or later
 - Apple Silicon and Intel Macs
+- Recommended menu bar placement: put $APP_NAME to the right of RunCat.
 
 ## First Launch
 

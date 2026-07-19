@@ -1,44 +1,80 @@
 #!/bin/zsh
 set -euo pipefail
 
+MODE="direct"
+CLEAN=false
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    clean)
+      CLEAN=true
+      shift
+      ;;
+    direct|appstore)
+      MODE="$1"
+      shift
+      ;;
+  esac
+fi
+
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORKSPACE_DIR="$(dirname "$ROOT_DIR")"
-BUILD_DIR="$ROOT_DIR/build"
-DIST_DIR="$ROOT_DIR/dist"
+PROJECT_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+BUILD_ROOT="$ROOT_DIR/build"
+DIST_ROOT="$ROOT_DIR/dist"
+
+if [[ "$CLEAN" == true ]]; then
+  rm -rf "$BUILD_ROOT" "$DIST_ROOT"
+  echo "Cleaned MouseRun build and dist artifacts."
+  exit 0
+fi
+
+BUILD_DIR="$ROOT_DIR/build/$MODE"
+DIST_DIR="$ROOT_DIR/dist/$MODE"
 APP_BUNDLE="$BUILD_DIR/MouseRun.app"
 INSTALL_BUNDLE="/Applications/MouseRun.app"
 ICON_SOURCE="$ROOT_DIR/Resources/AppIconTransparent.png"
+ENTITLEMENTS="$ROOT_DIR/Resources/MouseRun-AppStore.entitlements"
+
 if [[ ! -f "$ICON_SOURCE" ]]; then
-  ICON_SOURCE="$WORKSPACE_DIR/앱 아이콘 사진.png"
+  ICON_SOURCE="$PROJECT_ROOT/assets/MouseRun/originals/앱 아이콘 사진.png"
 fi
 
 APP_NAME="MouseRun"
-BUNDLE_ID="com.munch.mouserun"
 PUBLISHER="MUNCH"
 GITHUB_OWNER="MUNCHHHHH"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/Resources/Info.plist")"
 BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/Resources/Info.plist")"
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT_DIR/Resources/Info.plist")"
 MIN_MACOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$ROOT_DIR/Resources/Info.plist")"
-ARCHS=(${=ARCHS:-arm64 x86_64})
+ARCH_LIST="${ARCHS:-arm64 x86_64}"
+ARCH_ARRAY=(${=ARCH_LIST})
+SOURCE_FILES=("$ROOT_DIR/Sources/"*.swift)
 DO_INSTALL=false
+PACKAGE=true
 
 usage() {
   cat <<EOF
-Usage: ./build.sh [--install] [--no-package]
+Usage:
+  ./build.sh clean
+  ./build.sh [direct] [--install] [--no-package]
+  ./build.sh appstore
 
-Builds a direct-distribution macOS release in dist/.
+Modes:
+  clean       Removes generated build and app-local dist artifacts.
+  direct      Builds the full direct-distribution app. This is the default.
+  appstore    Builds the sandbox-safe App Store variant.
 
-Options:
+Options for direct mode:
   --install      Also copy the built app to /Applications.
-  --no-package  Build the app bundle only.
+  --no-package   Build the app bundle only.
 
 Environment:
-  ARCHS="arm64"              Build only selected architectures.
-  CODESIGN_IDENTITY="Name"   Sign with a certificate instead of ad-hoc signing.
+  ARCHS="arm64"                         Build selected architectures.
+  CODESIGN_IDENTITY="Name"              Sign direct builds with a certificate.
+  APP_STORE_SIGN_IDENTITY="Name"        Sign App Store app bundle.
+  APP_STORE_INSTALLER_IDENTITY="Name"   Create signed App Store .pkg.
 EOF
 }
 
-PACKAGE=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --install)
@@ -61,18 +97,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-rm -rf "$BUILD_DIR" "$DIST_DIR"
+if [[ "$MODE" == "appstore" ]]; then
+  PACKAGE=false
+fi
+
+rm -rf "$BUILD_DIR"
+if [[ "$PACKAGE" == true ]]; then
+  rm -rf "$DIST_DIR"
+fi
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+touch "$BUILD_ROOT/.metadata_never_index" "$BUILD_DIR/.metadata_never_index"
 
 THIN_BINARIES=()
-for arch in "${ARCHS[@]}"; do
+for arch in "${ARCH_ARRAY[@]}"; do
   THIN_BINARY="$BUILD_DIR/$APP_NAME-$arch"
-  swiftc \
-    -target "$arch-apple-macosx$MIN_MACOS" \
-    -framework Cocoa \
-    -framework IOBluetooth \
-    "$ROOT_DIR/Sources/main.swift" \
-    -o "$THIN_BINARY"
+  SWIFTC_ARGS=(
+    -target "$arch-apple-macosx$MIN_MACOS"
+    -framework Cocoa
+    -framework IOBluetooth
+    -framework IOKit
+  )
+
+  if [[ "$MODE" == "appstore" ]]; then
+    SWIFTC_ARGS+=(
+      -D APP_STORE
+      -framework ServiceManagement
+    )
+  fi
+
+  swiftc "${SWIFTC_ARGS[@]}" "${SOURCE_FILES[@]}" -o "$THIN_BINARY"
   THIN_BINARIES+=("$THIN_BINARY")
 done
 
@@ -95,8 +148,30 @@ if [[ -f "$ICON_SOURCE" ]]; then
   iconutil -c icns "$ICONSET" -o "$APP_BUNDLE/Contents/Resources/MouseRun.icns"
 fi
 
-SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
-codesign --force --deep --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP_BUNDLE" >/dev/null
+if [[ "$MODE" == "appstore" ]]; then
+  SIGN_IDENTITY="${APP_STORE_SIGN_IDENTITY:-}"
+  if [[ -n "$SIGN_IDENTITY" ]]; then
+    codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$APP_BUNDLE" >/dev/null
+    codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
+
+    if [[ -n "${APP_STORE_INSTALLER_IDENTITY:-}" ]]; then
+      productbuild \
+        --component "$APP_BUNDLE" /Applications \
+        --sign "$APP_STORE_INSTALLER_IDENTITY" \
+        "$BUILD_DIR/MouseRun.pkg"
+      echo "Built App Store package: $BUILD_DIR/MouseRun.pkg"
+    else
+      echo "Set APP_STORE_INSTALLER_IDENTITY to create a signed .pkg for App Store Connect."
+    fi
+  else
+    codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS" --sign - "$APP_BUNDLE" >/dev/null
+    echo "Built unsigned App Store test bundle: $APP_BUNDLE"
+    echo "Set APP_STORE_SIGN_IDENTITY and APP_STORE_INSTALLER_IDENTITY for submission signing."
+  fi
+else
+  SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+  codesign --force --deep --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP_BUNDLE" >/dev/null
+fi
 
 if [[ "$PACKAGE" == true ]]; then
   mkdir -p "$DIST_DIR"
@@ -135,8 +210,8 @@ Download \`$RELEASE_BASENAME-macOS-universal.dmg\`, open it, then drag \`$APP_NA
 
 ## Compatibility
 
-- macOS $MIN_MACOS or later
-- Apple Silicon and Intel Macs
+- Intel Mac: macOS $MIN_MACOS or later
+- Apple Silicon Mac: macOS 11 or later
 - Recommended menu bar placement: put $APP_NAME to the right of RunCat.
 
 ## First Launch

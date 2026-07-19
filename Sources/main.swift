@@ -1,6 +1,10 @@
 import Cocoa
 import IOBluetooth
+#if APP_STORE
+import ServiceManagement
+#else
 import Darwin
+#endif
 
 private enum ScrollDirection: String {
     case naturalOn = "on"
@@ -16,6 +20,14 @@ private enum AppStatus: Equatable {
 private final class EventLog {
     private let key = "recentEvents"
     private let limit = 50
+
+    init() {
+        let events = UserDefaults.standard.stringArray(forKey: key) ?? []
+        let sanitizedEvents = EventLogPrivacy.removingLegacyUnscopedBluetoothEvents(from: events)
+        if sanitizedEvents != events {
+            UserDefaults.standard.set(sanitizedEvents, forKey: key)
+        }
+    }
 
     func add(_ message: String) {
         let formatter = ISO8601DateFormatter()
@@ -35,13 +47,26 @@ private final class EventLog {
 
 private final class NaturalScrollController {
     private let log: EventLog
+    #if !APP_STORE
     private let privateScrollAPI = PrivateScrollDirectionAPI()
+    #endif
 
     init(log: EventLog) {
         self.log = log
     }
 
+    var isAutomaticSwitchingAvailable: Bool {
+        #if APP_STORE
+        return false
+        #else
+        return true
+        #endif
+    }
+
     func current() -> Bool {
+        #if APP_STORE
+        return true
+        #else
         if let current = privateScrollAPI.current() {
             return current
         }
@@ -65,10 +90,15 @@ private final class NaturalScrollController {
             log.add("Failed to read natural scroll setting: \(error.localizedDescription)")
             return true
         }
+        #endif
     }
 
     @discardableResult
     func set(_ direction: ScrollDirection) -> Bool {
+        #if APP_STORE
+        log.add("Automatic scroll switching is unavailable in the App Store build")
+        return false
+        #else
         let enabled = direction == .naturalOn
         if let apiResult = privateScrollAPI.set(enabled) {
             if apiResult {
@@ -103,16 +133,20 @@ private final class NaturalScrollController {
             log.add("Failed to set natural scroll setting: \(error.localizedDescription)")
             return false
         }
+        #endif
     }
 
+    #if !APP_STORE
     private func flushPreferences() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         task.arguments = ["cfprefsd"]
         try? task.run()
     }
+    #endif
 }
 
+#if !APP_STORE
 private final class PrivateScrollDirectionAPI {
     private typealias SwipeScrollDirectionFunction = @convention(c) () -> Int32
     private typealias SetSwipeScrollDirectionFunction = @convention(c) (Int32) -> Void
@@ -164,59 +198,11 @@ private final class PrivateScrollDirectionAPI {
         return (readFunction() != 0) == enabled
     }
 }
-
-private final class BluetoothMouseDetector {
-    func connectedMouseNames() -> [String] {
-        let devices = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
-        return devices
-            .filter { $0.isConnected() }
-            .filter { isMouse($0) }
-            .compactMap { device in
-                let name = device.nameOrAddress ?? device.addressString
-                return name?.isEmpty == false ? name : nil
-            }
-            .sorted()
-    }
-
-    private func isMouse(_ device: IOBluetoothDevice) -> Bool {
-        let name = (device.nameOrAddress ?? "").lowercased()
-
-        if name.contains("trackpad") ||
-            name.contains("keyboard") ||
-            name.contains("headphone") ||
-            name.contains("airpods") ||
-            name.contains("speaker") {
-            return false
-        }
-
-        let classOfDevice = UInt32(device.classOfDevice)
-        let majorDeviceClass = (classOfDevice >> 8) & 0x1f
-        let peripheralMinorClass = (classOfDevice >> 2) & 0x3f
-        let isPeripheral = majorDeviceClass == 0x05
-        let hasPointingBit = (peripheralMinorClass & 0x20) != 0
-
-        if isPeripheral && hasPointingBit {
-            return true
-        }
-
-        let mouseNameHints = [
-            "mouse",
-            "magic mouse",
-            "mx anywhere",
-            "mx master",
-            "logitech",
-            "m720",
-            "m650",
-            "m590",
-            "m350",
-            "pebble"
-        ]
-        return mouseNameHints.contains { name.contains($0) }
-    }
-}
+#endif
 
 private final class LoginItemInstaller {
-    private let label = "com.munch.mouserun"
+    private let label = "com.mouserun.app"
+    private let legacyLabels = ["com.munch.mouserun"]
     private let log: EventLog
 
     init(log: EventLog) {
@@ -224,15 +210,42 @@ private final class LoginItemInstaller {
     }
 
     var launchAgentURL: URL {
+        #if APP_STORE
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/MouseRun")
+        #else
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents/\(label).plist")
+        #endif
+    }
+
+    var loginItemDescription: String {
+        #if APP_STORE
+        return "SMAppService main app login item"
+        #else
+        return launchAgentURL.path
+        #endif
     }
 
     func installIfPossible() {
+        #if APP_STORE
+        if #available(macOS 13.0, *) {
+            do {
+                try SMAppService.mainApp.register()
+                log.add("Login item registered with SMAppService")
+            } catch {
+                log.add("Failed to register login item with SMAppService: \(error.localizedDescription)")
+            }
+        } else {
+            log.add("Skipped login item registration because SMAppService requires macOS 13 or later")
+        }
+        #else
         guard Bundle.main.bundlePath.hasSuffix(".app") else {
             log.add("Skipped login item install outside app bundle")
             return
         }
+
+        removeLegacyLaunchAgents()
 
         let executablePath = Bundle.main.executablePath ?? "/Applications/MouseRun.app/Contents/MacOS/MouseRun"
         let plist = """
@@ -262,7 +275,27 @@ private final class LoginItemInstaller {
         } catch {
             log.add("Failed to install login item: \(error.localizedDescription)")
         }
+        #endif
     }
+
+    #if !APP_STORE
+    private func removeLegacyLaunchAgents() {
+        let launchAgentsDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents")
+
+        for legacyLabel in legacyLabels {
+            let legacyURL = launchAgentsDirectory.appendingPathComponent("\(legacyLabel).plist")
+            guard FileManager.default.fileExists(atPath: legacyURL.path) else { continue }
+
+            do {
+                try FileManager.default.removeItem(at: legacyURL)
+                log.add("Removed legacy login item: \(legacyLabel)")
+            } catch {
+                log.add("Failed to remove legacy login item \(legacyLabel): \(error.localizedDescription)")
+            }
+        }
+    }
+    #endif
 }
 
 private final class MouseIconFactory {
@@ -328,7 +361,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isOnlyRunningInstance() -> Bool {
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.munch.mouserun")
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.mouserun.app")
         return !runningApps.contains { $0.processIdentifier != currentPID }
     }
 
@@ -337,6 +370,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         backupTimer?.invalidate()
         connectNotification?.unregister()
         disconnectNotifications.forEach { $0.unregister() }
+        detector.stopHIDMonitoring()
         _ = scrollController.set(.naturalOn)
         log.add("MouseRun terminated; natural scrolling enabled")
     }
@@ -363,6 +397,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func registerBluetoothNotifications() {
         connectNotification = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(deviceConnected(_:device:)))
+        detector.startHIDMonitoring { [weak self] in
+            self?.synchronize(reason: "HID mouse event")
+        }
         refreshDisconnectNotifications()
     }
 
@@ -378,7 +415,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        log.add("Bluetooth device connected: \(device.nameOrAddress ?? device.addressString ?? "Unknown")")
+        if let mouseLabel = BluetoothMouseClassifier.bluetoothMouseEventLabel(
+            name: device.nameOrAddress,
+            address: device.addressString,
+            classOfDevice: UInt32(device.classOfDevice)
+        ) {
+            log.add("Bluetooth mouse connected: \(mouseLabel)")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "connect event")
@@ -386,7 +429,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func deviceDisconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        log.add("Bluetooth device disconnected: \(device.nameOrAddress ?? device.addressString ?? "Unknown")")
+        if let mouseLabel = BluetoothMouseClassifier.bluetoothMouseEventLabel(
+            name: device.nameOrAddress,
+            address: device.addressString,
+            classOfDevice: UInt32(device.classOfDevice)
+        ) {
+            log.add("Bluetooth mouse disconnected: \(mouseLabel)")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "disconnect event")
@@ -396,6 +445,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private func synchronize(reason: String) {
         let previousStatus = status
         let mice = detector.connectedMouseNames()
+
+        guard scrollController.isAutomaticSwitchingAvailable else {
+            status = mice.isEmpty ? .trackpadMode : .mouseMode(mice)
+            if status != previousStatus || reason != "backup check" {
+                log.add("Monitored from \(reason): \(mice.isEmpty ? "trackpad mode" : mice.joined(separator: ", "))")
+            }
+            updateMenu()
+            updateAnimation()
+            return
+        }
+
         let target: ScrollDirection = mice.isEmpty ? .naturalOn : .naturalOff
         let shouldBeNatural = target == .naturalOn
         let isAlreadyCorrect = scrollController.current() == shouldBeNatural
@@ -428,6 +488,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         scrollMenuItem.title = "자연스러운 스크롤: \(scrollController.current() ? "켜짐" : "꺼짐")"
+        if !scrollController.isAutomaticSwitchingAvailable {
+            scrollMenuItem.title = "자동 전환: App Store 버전에서는 수동 설정 필요"
+        }
         statusItem.button?.toolTip = statusMenuItem.title
     }
 
@@ -451,11 +514,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func copyTroubleshootingInfo() {
         let info = [
             "MouseRun troubleshooting",
-            "Publisher: MUNCH",
             "Status: \(statusMenuItem.title)",
+            "Automatic switching available: \(scrollController.isAutomaticSwitchingAvailable ? "yes" : "no")",
             "Natural scrolling: \(scrollController.current() ? "on" : "off")",
             "Detected mice: \(detector.connectedMouseNames().joined(separator: ", "))",
-            "LaunchAgent: \(loginInstaller.launchAgentURL.path)",
+            "Login item: \(loginInstaller.loginItemDescription)",
             "Recent events:",
             log.all().joined(separator: "\n")
         ].joined(separator: "\n")

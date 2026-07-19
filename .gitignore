@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+
+# MouseRun build and release output
+build/
+dist/
+*.app
+*.dmg
+*.pkg
+*.zip
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+*.xcresult
+
+# Xcode user state
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Local environment and signing material
+.env
+.env.*
+!.env.example
+*.cer
+*.key
+*.mobileprovision
+*.p12
+*.pem
+*.pfx
+*.provisionprofile

@@ -126,7 +126,8 @@ Direct/App Store 빌드와 macOS 대상 버전 호환성 검사:
 
 ## 라이선스
 
-아직 오픈소스 라이선스가 선택되지 않았습니다. 라이선스 파일이 추가되기 전까지 공개된 소스의 권리는 MUNCH에 있으며 재사용 허가는 부여되지 않습니다.
+- 소스 코드, 빌드·테스트 스크립트, 설정 파일과 문서 텍스트는 [MIT License](LICENSE)로 공개합니다.
+- `Resources/*.png`를 포함한 이미지·아이콘·캐릭터·기타 시각 자산은 MIT 대상이 아니며 MUNCH가 모든 권리를 보유합니다. 개인적인 평가·사용을 위해 수정하지 않은 MouseRun을 빌드하고 실행하는 범위 외의 재사용은 별도 허가가 필요합니다. 자세한 범위는 [ASSET_LICENSE.md](ASSET_LICENSE.md)를 확인하세요.
 
 <details>
 <summary>English overview</summary>
@@ -140,5 +141,9 @@ MouseRun is a small macOS menu bar app that switches natural scrolling automatic
 The direct-distribution build provides automatic switching. The sandboxed App Store build path is monitor-only.
 
 [Download the latest release](https://github.com/MUNCHHHHH/MouseRun/releases/latest)
+
+Source code is available under the [MIT License](LICENSE). MouseRun image and
+visual assets are excluded from MIT and remain protected under the
+[MouseRun Visual Asset License](ASSET_LICENSE.md).
 
 </details>

@@ -9,6 +9,7 @@ struct MouseDetectionTests {
         testVirtualHIDMouseMatrix(failures: &failures)
         testVirtualIOBluetoothMatrix(failures: &failures)
         testBluetoothEventLoggingScope(failures: &failures)
+        testLegacyBluetoothEventSanitization(failures: &failures)
         testNegativeMatrix(failures: &failures)
 
         if failures.isEmpty {
@@ -206,6 +207,22 @@ struct MouseDetectionTests {
                 classOfDevice: 0x240418
             ) == nil,
             "Non-mouse Bluetooth identifiers should not enter the event log",
+            failures: &failures
+        )
+    }
+
+    private static func testLegacyBluetoothEventSanitization(failures: inout [String]) {
+        let events = [
+            "2026-07-07T10:00:00Z Bluetooth device connected: AirPods Pro",
+            "2026-07-07T10:01:00Z Bluetooth device disconnected: 11-22-33-44-55-66",
+            "2026-07-19T10:02:00Z Bluetooth mouse connected: Magic Mouse",
+            "2026-07-19T10:03:00Z Synchronized from connect event: Magic Mouse"
+        ]
+
+        let sanitizedEvents = EventLogPrivacy.removingLegacyUnscopedBluetoothEvents(from: events)
+        expect(
+            sanitizedEvents == Array(events.suffix(2)),
+            "Legacy unscoped Bluetooth identifiers should be removed without deleting mouse-only or synchronization events",
             failures: &failures
         )
     }

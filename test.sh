@@ -11,6 +11,7 @@ touch "$ROOT_DIR/build/.metadata_never_index" "$BUILD_DIR/.metadata_never_index"
 swiftc \
   -framework IOBluetooth \
   -framework IOKit \
+  "$ROOT_DIR/Sources/EventLogPrivacy.swift" \
   "$ROOT_DIR/Sources/MouseDetection.swift" \
   "$ROOT_DIR/Tests/MouseDetectionTests.swift" \
   -o "$TEST_BINARY"

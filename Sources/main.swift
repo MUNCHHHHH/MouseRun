@@ -21,6 +21,14 @@ private final class EventLog {
     private let key = "recentEvents"
     private let limit = 50
 
+    init() {
+        let events = UserDefaults.standard.stringArray(forKey: key) ?? []
+        let sanitizedEvents = EventLogPrivacy.removingLegacyUnscopedBluetoothEvents(from: events)
+        if sanitizedEvents != events {
+            UserDefaults.standard.set(sanitizedEvents, forKey: key)
+        }
+    }
+
     func add(_ message: String) {
         let formatter = ISO8601DateFormatter()
         let entry = "\(formatter.string(from: Date())) \(message)"

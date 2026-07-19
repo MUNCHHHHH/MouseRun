@@ -43,6 +43,28 @@ enum BluetoothMouseClassifier {
         return transport.lowercased().contains("bluetooth")
     }
 
+    static func bluetoothMouseEventLabel(
+        name: String?,
+        address: String?,
+        classOfDevice: UInt32
+    ) -> String? {
+        let displayName = trimmed(name)
+        guard isBluetoothDeviceMouse(
+            name: displayName ?? "",
+            classOfDevice: classOfDevice
+        ) else {
+            return nil
+        }
+
+        return displayName ?? trimmed(address) ?? "Unknown Bluetooth mouse"
+    }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let trimmedValue = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmedValue, !trimmedValue.isEmpty else { return nil }
+        return trimmedValue
+    }
+
     private static func isRejectedBluetoothDeviceName(_ name: String) -> Bool {
         rejectedBluetoothNameFragments.contains { name.contains($0) }
     }

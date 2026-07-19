@@ -194,6 +194,7 @@ private final class PrivateScrollDirectionAPI {
 
 private final class LoginItemInstaller {
     private let label = "com.mouserun.app"
+    private let legacyLabels = ["com.munch.mouserun"]
     private let log: EventLog
 
     init(log: EventLog) {
@@ -236,6 +237,8 @@ private final class LoginItemInstaller {
             return
         }
 
+        removeLegacyLaunchAgents()
+
         let executablePath = Bundle.main.executablePath ?? "/Applications/MouseRun.app/Contents/MacOS/MouseRun"
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -266,6 +269,25 @@ private final class LoginItemInstaller {
         }
         #endif
     }
+
+    #if !APP_STORE
+    private func removeLegacyLaunchAgents() {
+        let launchAgentsDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents")
+
+        for legacyLabel in legacyLabels {
+            let legacyURL = launchAgentsDirectory.appendingPathComponent("\(legacyLabel).plist")
+            guard FileManager.default.fileExists(atPath: legacyURL.path) else { continue }
+
+            do {
+                try FileManager.default.removeItem(at: legacyURL)
+                log.add("Removed legacy login item: \(legacyLabel)")
+            } catch {
+                log.add("Failed to remove legacy login item \(legacyLabel): \(error.localizedDescription)")
+            }
+        }
+    }
+    #endif
 }
 
 private final class MouseIconFactory {
@@ -385,7 +407,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        log.add("Bluetooth device connected: \(device.nameOrAddress ?? device.addressString ?? "Unknown")")
+        if let mouseLabel = BluetoothMouseClassifier.bluetoothMouseEventLabel(
+            name: device.nameOrAddress,
+            address: device.addressString,
+            classOfDevice: UInt32(device.classOfDevice)
+        ) {
+            log.add("Bluetooth mouse connected: \(mouseLabel)")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "connect event")
@@ -393,7 +421,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func deviceDisconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        log.add("Bluetooth device disconnected: \(device.nameOrAddress ?? device.addressString ?? "Unknown")")
+        if let mouseLabel = BluetoothMouseClassifier.bluetoothMouseEventLabel(
+            name: device.nameOrAddress,
+            address: device.addressString,
+            classOfDevice: UInt32(device.classOfDevice)
+        ) {
+            log.add("Bluetooth mouse disconnected: \(mouseLabel)")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "disconnect event")

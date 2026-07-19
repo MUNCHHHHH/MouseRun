@@ -8,6 +8,7 @@ struct MouseDetectionTests {
         testBluetoothTransport(failures: &failures)
         testVirtualHIDMouseMatrix(failures: &failures)
         testVirtualIOBluetoothMatrix(failures: &failures)
+        testBluetoothEventLoggingScope(failures: &failures)
         testNegativeMatrix(failures: &failures)
 
         if failures.isEmpty {
@@ -171,6 +172,40 @@ struct MouseDetectionTests {
                 classOfDevice: 0x240418
             ),
             "Audio devices should not be treated as mice",
+            failures: &failures
+        )
+    }
+
+    private static func testBluetoothEventLoggingScope(failures: inout [String]) {
+        let pointingPeripheralClass = UInt32(0x05 << 8) | UInt32(0x20 << 2)
+
+        expect(
+            BluetoothMouseClassifier.bluetoothMouseEventLabel(
+                name: "Magic Mouse",
+                address: "AA-BB-CC-DD-EE-FF",
+                classOfDevice: pointingPeripheralClass
+            ) == "Magic Mouse",
+            "Mouse events should prefer the mouse name",
+            failures: &failures
+        )
+
+        expect(
+            BluetoothMouseClassifier.bluetoothMouseEventLabel(
+                name: nil,
+                address: "AA-BB-CC-DD-EE-FF",
+                classOfDevice: pointingPeripheralClass
+            ) == "AA-BB-CC-DD-EE-FF",
+            "Unnamed mouse events should fall back to the Bluetooth address",
+            failures: &failures
+        )
+
+        expect(
+            BluetoothMouseClassifier.bluetoothMouseEventLabel(
+                name: "AirPods Pro",
+                address: "11-22-33-44-55-66",
+                classOfDevice: 0x240418
+            ) == nil,
+            "Non-mouse Bluetooth identifiers should not enter the event log",
             failures: &failures
         )
     }

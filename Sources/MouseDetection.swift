@@ -108,6 +108,17 @@ enum BluetoothMouseClassifier {
     ]
 }
 
+enum BluetoothMouseDetectionPolicy {
+    static func resolvedMouseNames(
+        hidMouseNames: [String],
+        bluetoothMouseNames: [String],
+        isHIDMonitoringAvailable: Bool
+    ) -> [String] {
+        let selectedNames = isHIDMonitoringAvailable ? hidMouseNames : bluetoothMouseNames
+        return Array(Set(selectedNames)).sorted()
+    }
+}
+
 final class BluetoothMouseDetector {
     private let hidManager: IOHIDManager
     private var hidChangeHandler: (() -> Void)?
@@ -123,23 +134,34 @@ final class BluetoothMouseDetector {
     }
 
     func connectedMouseNames() -> [String] {
-        var names = Set<String>()
-        connectedIOBluetoothMouseNames().forEach { names.insert($0) }
-        connectedHIDMouseNames().forEach { names.insert($0) }
-        return names.sorted()
+        let hidNames = connectedHIDMouseNames()
+        let bluetoothNames = hidMonitoringStarted ? [] : connectedIOBluetoothMouseNames()
+        return BluetoothMouseDetectionPolicy.resolvedMouseNames(
+            hidMouseNames: hidNames,
+            bluetoothMouseNames: bluetoothNames,
+            isHIDMonitoringAvailable: hidMonitoringStarted
+        )
     }
 
-    func startHIDMonitoring(onChange: @escaping () -> Void) {
+    @discardableResult
+    func startHIDMonitoring(onChange: @escaping () -> Void) -> Bool {
         hidChangeHandler = onChange
 
-        guard !hidMonitoringStarted else { return }
+        guard !hidMonitoringStarted else { return true }
 
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(hidManager, Self.hidDeviceChanged, context)
         IOHIDManagerRegisterDeviceRemovalCallback(hidManager, Self.hidDeviceChanged, context)
         IOHIDManagerScheduleWithRunLoop(hidManager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDManagerOpen(hidManager, IOOptionBits(kIOHIDOptionsTypeNone))
+        let openResult = IOHIDManagerOpen(hidManager, IOOptionBits(kIOHIDOptionsTypeNone))
+        guard openResult == kIOReturnSuccess else {
+            IOHIDManagerUnscheduleFromRunLoop(hidManager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+            hidChangeHandler = nil
+            return false
+        }
+
         hidMonitoringStarted = true
+        return true
     }
 
     func stopHIDMonitoring() {
@@ -148,6 +170,12 @@ final class BluetoothMouseDetector {
         IOHIDManagerClose(hidManager, IOOptionBits(kIOHIDOptionsTypeNone))
         hidMonitoringStarted = false
         hidChangeHandler = nil
+    }
+
+    func refreshHIDMonitoringAfterWake() {
+        guard let hidChangeHandler else { return }
+        stopHIDMonitoring()
+        startHIDMonitoring(onChange: hidChangeHandler)
     }
 
     private func connectedIOBluetoothMouseNames() -> [String] {

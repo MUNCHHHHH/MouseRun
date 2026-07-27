@@ -332,6 +332,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var animationTimer: Timer?
     private var connectNotification: IOBluetoothUserNotification?
     private var disconnectNotifications: [IOBluetoothUserNotification] = []
+    private var wakeObserver: NSObjectProtocol?
+    private var wakeSynchronization: DispatchWorkItem?
     private var runningIcons: [NSImage] = []
     private var runningFrame = 0
     private var status: AppStatus = .trackpadMode
@@ -352,6 +354,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         setupMenu()
         loginInstaller.installIfPossible()
         registerBluetoothNotifications()
+        registerWakeNotification()
         synchronize(reason: "app launch")
         backupTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.synchronize(reason: "backup check")
@@ -370,6 +373,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         backupTimer?.invalidate()
         connectNotification?.unregister()
         disconnectNotifications.forEach { $0.unregister() }
+        wakeSynchronization?.cancel()
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
         detector.stopHIDMonitoring()
         _ = scrollController.set(.naturalOn)
         log.add("MouseRun terminated; natural scrolling enabled")
@@ -401,6 +408,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.synchronize(reason: "HID mouse event")
         }
         refreshDisconnectNotifications()
+    }
+
+    private func registerWakeNotification() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleWakeSynchronization()
+        }
+    }
+
+    private func scheduleWakeSynchronization() {
+        wakeSynchronization?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.detector.refreshHIDMonitoringAfterWake()
+            self.synchronize(reason: "system wake")
+        }
+        wakeSynchronization = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: workItem)
     }
 
     private func refreshDisconnectNotifications() {

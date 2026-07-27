@@ -8,12 +8,16 @@ struct MouseDetectionTests {
         testBluetoothTransport(failures: &failures)
         testVirtualHIDMouseMatrix(failures: &failures)
         testVirtualIOBluetoothMatrix(failures: &failures)
+        testDetectionSourcePriority(failures: &failures)
         testBluetoothEventLoggingScope(failures: &failures)
         testLegacyBluetoothEventSanitization(failures: &failures)
         testNegativeMatrix(failures: &failures)
 
         if failures.isEmpty {
-            let liveNames = BluetoothMouseDetector().connectedMouseNames()
+            let detector = BluetoothMouseDetector()
+            detector.startHIDMonitoring {}
+            let liveNames = detector.connectedMouseNames()
+            detector.stopHIDMonitoring()
             let liveSummary = liveNames.isEmpty ? "none" : liveNames.joined(separator: ", ")
             print("MouseDetectionTests passed: virtual device matrix + live detector")
             print("Live detected Bluetooth mice: \(liveSummary)")
@@ -21,6 +25,38 @@ struct MouseDetectionTests {
             fputs(failures.joined(separator: "\n") + "\n", stderr)
             exit(1)
         }
+    }
+
+    private static func testDetectionSourcePriority(failures: inout [String]) {
+        expect(
+            BluetoothMouseDetectionPolicy.resolvedMouseNames(
+                hidMouseNames: [],
+                bluetoothMouseNames: ["MX Anywhere 3S"],
+                isHIDMonitoringAvailable: true
+            ).isEmpty,
+            "Stale IOBluetooth state should not keep mouse mode active when IOHID reports no mouse",
+            failures: &failures
+        )
+
+        expect(
+            BluetoothMouseDetectionPolicy.resolvedMouseNames(
+                hidMouseNames: ["MX Anywhere 3S"],
+                bluetoothMouseNames: ["Stale Mouse"],
+                isHIDMonitoringAvailable: true
+            ) == ["MX Anywhere 3S"],
+            "Active IOHID mice should be authoritative when monitoring is available",
+            failures: &failures
+        )
+
+        expect(
+            BluetoothMouseDetectionPolicy.resolvedMouseNames(
+                hidMouseNames: [],
+                bluetoothMouseNames: ["MX Anywhere 3S"],
+                isHIDMonitoringAvailable: false
+            ) == ["MX Anywhere 3S"],
+            "IOBluetooth should remain the fallback when IOHID monitoring cannot open",
+            failures: &failures
+        )
     }
 
     private static func testBluetoothTransport(failures: inout [String]) {

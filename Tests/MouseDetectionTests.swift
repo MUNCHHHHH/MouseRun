@@ -13,11 +13,19 @@ struct MouseDetectionTests {
         testLegacyBluetoothEventSanitization(failures: &failures)
         testNegativeMatrix(failures: &failures)
 
+        let detector = BluetoothMouseDetector()
+        detector.startHIDMonitoring {}
+        let liveNamesBeforeRefresh = detector.connectedMouseNames()
+        detector.refreshHIDMonitoring()
+        let liveNames = detector.connectedMouseNames()
+        if liveNames != liveNamesBeforeRefresh {
+            failures.append(
+                "Refreshing HID monitoring should preserve the current live mouse set"
+            )
+        }
+        detector.stopHIDMonitoring()
+
         if failures.isEmpty {
-            let detector = BluetoothMouseDetector()
-            detector.startHIDMonitoring {}
-            let liveNames = detector.connectedMouseNames()
-            detector.stopHIDMonitoring()
             let liveSummary = liveNames.isEmpty ? "none" : liveNames.joined(separator: ", ")
             print("MouseDetectionTests passed: virtual device matrix + live detector")
             print("Live detected Bluetooth mice: \(liveSummary)")

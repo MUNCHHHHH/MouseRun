@@ -4,17 +4,17 @@
 
 ## 다음 릴리스
 
-다음 권장 버전은 `1.0.3`이며 빌드 번호는 `103`입니다.
+다음 권장 버전은 `1.0.4`이며 빌드 번호는 `104`입니다.
 
-기존 `v1.0.2` 태그는 GitHub에 공개된 과거 커밋을 가리키고 있으므로 이동하거나 강제로 덮어쓰지 않습니다. 잠자기 해제 후 마우스 상태 복구 수정을 새 커밋으로 병합한 뒤 새 `v1.0.3` 태그를 만듭니다.
+기존 `v1.0.3` 태그는 GitHub에 공개된 과거 커밋을 가리키고 있으므로 이동하거나 강제로 덮어쓰지 않습니다. 오래 실행 중인 HID 감시기가 새 BLE 마우스를 놓치는 문제를 새 커밋으로 수정한 뒤 새 `v1.0.4` 태그를 만듭니다.
 
 ## 1. 버전 확인
 
 `Resources/Info.plist`:
 
 ```text
-CFBundleShortVersionString = 1.0.3
-CFBundleVersion = 103
+CFBundleShortVersionString = 1.0.4
+CFBundleVersion = 104
 ```
 
 ## 2. 테스트와 빌드
@@ -30,7 +30,7 @@ CFBundleVersion = 103
 모든 명령이 성공한 뒤 다음 산출물을 확인합니다.
 
 ```text
-dist/direct/MouseRun-1.0.3+103-macOS-universal.dmg
+dist/direct/MouseRun-1.0.4+104-macOS-universal.dmg
 dist/direct/SHA256SUMS.txt
 dist/direct/RELEASE_NOTES.md
 ```
@@ -42,20 +42,20 @@ dist/direct/RELEASE_NOTES.md
 - 기존 태그는 다시 만들거나 강제로 이동하지 않습니다.
 
 ```sh
-git tag -a v1.0.3 -m "MouseRun 1.0.3"
+git tag -a v1.0.4 -m "MouseRun 1.0.4"
 git push origin main
-git push origin v1.0.3
+git push origin v1.0.4
 ```
 
 ## 4. GitHub Release
 
-- Tag: `v1.0.3`
-- Title: `MouseRun 1.0.3`
+- Tag: `v1.0.4`
+- Title: `MouseRun 1.0.4`
 - Notes: `dist/direct/RELEASE_NOTES.md`
-- Asset: `dist/direct/MouseRun-1.0.3+103-macOS-universal.dmg`
+- Asset: `dist/direct/MouseRun-1.0.4+104-macOS-universal.dmg`
 - Checksum: `dist/direct/SHA256SUMS.txt`
 
-Release를 공개한 뒤 [최신 릴리스 링크](https://github.com/MUNCHHHHH/MouseRun/releases/latest)가 `v1.0.3`으로 이동했는지 확인합니다.
+Release를 공개한 뒤 [최신 릴리스 링크](https://github.com/MUNCHHHHH/MouseRun/releases/latest)가 `v1.0.4`로 이동했는지 확인합니다.
 
 ## 5. GitHub 저장소 정보
 

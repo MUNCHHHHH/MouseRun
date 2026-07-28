@@ -425,7 +425,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.detector.refreshHIDMonitoringAfterWake()
+            self.detector.refreshHIDMonitoring()
             self.synchronize(reason: "system wake")
         }
         wakeSynchronization = workItem
@@ -452,6 +452,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             log.add("Bluetooth mouse connected: \(mouseLabel)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.detector.refreshHIDMonitoring()
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "connect event")
         }
@@ -466,6 +467,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             log.add("Bluetooth mouse disconnected: \(mouseLabel)")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.detector.refreshHIDMonitoring()
             self.refreshDisconnectNotifications()
             self.synchronize(reason: "disconnect event")
         }

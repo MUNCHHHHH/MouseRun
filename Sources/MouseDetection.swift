@@ -120,13 +120,12 @@ enum BluetoothMouseDetectionPolicy {
 }
 
 final class BluetoothMouseDetector {
-    private let hidManager: IOHIDManager
+    private var hidManager: IOHIDManager
     private var hidChangeHandler: (() -> Void)?
     private var hidMonitoringStarted = false
 
     init() {
-        hidManager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        IOHIDManagerSetDeviceMatchingMultiple(hidManager, Self.hidMouseMatchingDictionaries as CFArray)
+        hidManager = Self.makeHIDManager()
     }
 
     deinit {
@@ -172,9 +171,10 @@ final class BluetoothMouseDetector {
         hidChangeHandler = nil
     }
 
-    func refreshHIDMonitoringAfterWake() {
+    func refreshHIDMonitoring() {
         guard let hidChangeHandler else { return }
         stopHIDMonitoring()
+        hidManager = Self.makeHIDManager()
         startHIDMonitoring(onChange: hidChangeHandler)
     }
 
@@ -228,6 +228,18 @@ final class BluetoothMouseDetector {
             kIOHIDDeviceUsageKey: kHIDUsage_GD_Mouse
         ]
     ]
+
+    private static func makeHIDManager() -> IOHIDManager {
+        let manager = IOHIDManagerCreate(
+            kCFAllocatorDefault,
+            IOOptionBits(kIOHIDOptionsTypeNone)
+        )
+        IOHIDManagerSetDeviceMatchingMultiple(
+            manager,
+            hidMouseMatchingDictionaries as CFArray
+        )
+        return manager
+    }
 
     private static let hidDeviceChanged: IOHIDDeviceCallback = { context, _, _, device in
         guard let context else { return }
